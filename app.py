@@ -1,3 +1,5 @@
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import streamlit as st
 import pandas as pd
 import cv2

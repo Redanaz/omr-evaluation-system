@@ -1,5 +1,3 @@
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import streamlit as st
 import pandas as pd
 import cv2
@@ -9,66 +7,28 @@ import time
 import os
 from tempfile import NamedTemporaryFile
 from pathlib import Path
-import plotly.express as px
-import plotly.graph_objects as go
+
+# Try importing optional packages
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    st.warning("Plotly not available - using basic charts")
+
 from omr import evaluate, validate_answer_key, SUBJECTS
 
 # Page configuration
 st.set_page_config(
     page_title="OMR Evaluation System",
     page_icon="📝",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-        font-weight: bold;
-    }
-    .success-box {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        margin: 1rem 0;
-    }
-    .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
-        font-size: 16px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # Title and description
-st.markdown('<h1 class="main-header">📝 Automated OMR Evaluation System</h1>', unsafe_allow_html=True)
-st.markdown("### 🎯 Hackathon Project: Instant OMR Sheet Processing with 99.5%+ Accuracy")
-
-# Add some info about the system
-with st.expander("ℹ️ About This System"):
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-        **🚀 Features:**
-        - Instant OMR processing from phone images
-        - Support for multiple exam versions
-        - Subject-wise performance analysis
-        - Batch processing capabilities
-        - Real-time error detection
-        """)
-    with col2:
-        st.markdown("""
-        **📊 Specifications:**
-        - 100 questions across 5 subjects
-        - <0.5% error rate target
-        - <30 seconds processing time
-        - Handles 3000+ sheets per exam
-        - Export in multiple formats
-        """)
+st.title("📝 Automated OMR Evaluation System")
+st.write("### 🎯 Hackathon Project: Instant OMR Sheet Processing")
 
 # Sidebar
 with st.sidebar:
@@ -116,31 +76,25 @@ with st.sidebar:
     st.subheader("🔧 Processing Options")
     show_detailed_results = st.checkbox("Show detailed analysis", value=True)
     show_overlay_images = st.checkbox("Show bubble detection", value=True)
-    batch_mode = st.checkbox("Batch processing mode", value=False)
 
-# Main content area
-col1, col2 = st.columns([2, 1])
+# File upload
+st.header("📤 Upload OMR Sheets")
+uploaded_files = st.file_uploader(
+    "Choose OMR image files",
+    type=["jpg", "jpeg", "png"],
+    accept_multiple_files=True,
+    help="Upload clear images of filled OMR sheets"
+)
 
-with col1:
-    st.header("📤 Upload OMR Sheets")
-    uploaded_files = st.file_uploader(
-        "Choose OMR image files",
-        type=["jpg", "jpeg", "png"],
-        accept_multiple_files=True,
-        help="Upload clear images of filled OMR sheets. Supports multiple files for batch processing."
-    )
-
-with col2:
-    if uploaded_files:
-        st.metric("📁 Files Uploaded", len(uploaded_files))
-        st.metric("📋 Questions/Sheet", len(answer_key))
+# Show upload info
+if uploaded_files:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("📁 Files", len(uploaded_files))
+    with col2:
+        st.metric("📋 Questions", len(answer_key))
+    with col3:
         st.metric("🎯 Max Score", len(answer_key))
-        
-        # Show file info
-        with st.expander("📄 File Details"):
-            for i, file in enumerate(uploaded_files):
-                file_size_mb = len(file.getvalue()) / (1024 * 1024)
-                st.write(f"**{i+1}.** {file.name} ({file_size_mb:.1f} MB)")
 
 # Results storage
 if 'results_data' not in st.session_state:
@@ -155,19 +109,9 @@ if uploaded_files and not st.session_state.processing_complete:
     # Progress tracking
     progress_bar = st.progress(0)
     status_text = st.empty()
-    processing_container = st.container()
     
     # Clear previous results
     st.session_state.results_data = []
-    
-    with processing_container:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            processed_count = st.empty()
-        with col2:
-            success_count = st.empty()
-        with col3:
-            error_count = st.empty()
     
     successful_processing = 0
     failed_processing = 0
@@ -176,8 +120,6 @@ if uploaded_files and not st.session_state.processing_complete:
         progress = (idx) / len(uploaded_files)
         progress_bar.progress(progress)
         status_text.text(f"Processing {uploaded_file.name} ({idx+1}/{len(uploaded_files)})...")
-        
-        processed_count.metric("📊 Processed", f"{idx+1}/{len(uploaded_files)}")
         
         # Save uploaded file temporarily
         with NamedTemporaryFile(delete=False, suffix='.jpg') as tmp:
@@ -216,15 +158,11 @@ if uploaded_files and not st.session_state.processing_complete:
             else:
                 # Error in processing
                 failed_processing += 1
-                st.error(f"❌ Failed to process {uploaded_file.name}: {score if isinstance(score, str) else 'Unknown error'}")
+                st.error(f"❌ Failed to process {uploaded_file.name}")
                 
         except Exception as e:
             failed_processing += 1
             st.error(f"❌ Error processing {uploaded_file.name}: {str(e)}")
-        
-        # Update counters
-        success_count.metric("✅ Successful", successful_processing)
-        error_count.metric("❌ Failed", failed_processing)
         
         # Clean up temporary file
         try:
@@ -238,12 +176,18 @@ if uploaded_files and not st.session_state.processing_complete:
     
     # Show summary
     if st.session_state.results_data:
-        st.success(f"🎉 Successfully processed {len(st.session_state.results_data)} out of {len(uploaded_files)} sheets!")
-        if failed_processing > 0:
-            st.warning(f"⚠️ {failed_processing} sheets failed to process. Check image quality and try again.")
+        st.success(f"🎉 Successfully processed {successful_processing}/{len(uploaded_files)} sheets!")
     
     time.sleep(1)
-    st.rerun()
+    
+    # Refresh page - compatible with all Streamlit versions
+    try:
+        st.rerun()
+    except AttributeError:
+        try:
+            st.experimental_rerun()
+        except AttributeError:
+            st.write("Please refresh the page to see results")
 
 # Display results if available
 if st.session_state.results_data:
@@ -269,48 +213,39 @@ if st.session_state.results_data:
         avg_time = df["Processing Time (s)"].mean()
         st.metric("⏱️ Avg. Time", f"{avg_time:.2f}s")
     
-    # Subject-wise performance chart
-    st.subheader("📈 Subject-wise Performance Analysis")
+    # Subject-wise performance
+    st.subheader("📈 Subject-wise Performance")
     subject_cols = [col for col in df.columns if col in SUBJECTS.keys()]
     if subject_cols:
         subject_avg = df[subject_cols].mean()
         
-        fig = px.bar(
-            x=subject_avg.index,
-            y=subject_avg.values,
-            title="Average Score by Subject (out of 20)",
-            labels={'x': 'Subject', 'y': 'Average Score'},
-            color=subject_avg.values,
-            color_continuous_scale='viridis',
-            text=subject_avg.values.round(1)
-        )
-        fig.update_layout(showlegend=False, height=400)
-        fig.update_traces(texttemplate='%{text}', textposition='outside')
-        st.plotly_chart(fig, use_container_width=True)
+        if PLOTLY_AVAILABLE:
+            # Advanced chart with Plotly
+            fig = px.bar(
+                x=subject_avg.index,
+                y=subject_avg.values,
+                title="Average Score by Subject (out of 20)",
+                labels={'x': 'Subject', 'y': 'Average Score'},
+                text=subject_avg.values.round(1)
+            )
+            fig.update_traces(texttemplate='%{text}', textposition='outside')
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            # Simple chart with Streamlit
+            st.bar_chart(subject_avg)
     
     # Score distribution
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fig = px.histogram(
-            df, 
-            x="Percentage", 
-            title="Score Distribution",
-            nbins=20,
-            labels={'Percentage': 'Score (%)', 'count': 'Number of Students'}
-        )
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        fig = px.box(
-            df, 
-            y="Percentage", 
-            title="Score Statistics",
-            labels={'Percentage': 'Score (%)'}
-        )
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
+    if PLOTLY_AVAILABLE:
+        col1, col2 = st.columns(2)
+        with col1:
+            fig = px.histogram(df, x="Percentage", title="Score Distribution", nbins=10)
+            st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            fig = px.box(df, y="Percentage", title="Score Statistics")
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.subheader("📊 Score Distribution")
+        st.bar_chart(df["Percentage"].value_counts().sort_index())
     
     # Detailed results table
     st.subheader("📋 Summary Results")
@@ -322,9 +257,9 @@ if st.session_state.results_data:
         st.subheader("👤 Individual Student Analysis")
         
         student_selection = st.selectbox(
-            "Select a student for detailed analysis:",
+            "Select a student:",
             options=range(len(st.session_state.results_data)),
-            format_func=lambda x: f"{st.session_state.results_data[x]['Student ID']} - {st.session_state.results_data[x]['Percentage']}%"
+            format_func=lambda x: f"{st.session_state.results_data[x]['Student ID']} ({st.session_state.results_data[x]['Percentage']}%)"
         )
         
         selected_result = st.session_state.results_data[student_selection]
@@ -332,113 +267,39 @@ if st.session_state.results_data:
         # Student summary
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Student ID", selected_result["Student ID"])
+            st.metric("Student", selected_result["Student ID"])
         with col2:
-            st.metric("Total Score", f"{selected_result['Total Score']}/{len(answer_key)}")
+            st.metric("Score", f"{selected_result['Total Score']}/{len(answer_key)}")
         with col3:
             st.metric("Percentage", f"{selected_result['Percentage']}%")
         with col4:
             grade = "A" if selected_result['Percentage'] >= 90 else "B" if selected_result['Percentage'] >= 80 else "C" if selected_result['Percentage'] >= 70 else "D" if selected_result['Percentage'] >= 60 else "F"
             st.metric("Grade", grade)
         
-        # Show overlay image if available
+        # Show overlay image
         if show_overlay_images and 'overlay_image' in selected_result:
             st.subheader("🎯 Bubble Detection Results")
             overlay_img = selected_result['overlay_image']
             if overlay_img is not None:
-                # Convert BGR to RGB for display
                 overlay_rgb = cv2.cvtColor(overlay_img, cv2.COLOR_BGR2RGB)
-                st.image(
-                    overlay_rgb,
-                    caption=f"Answer Detection for {selected_result['Student ID']} - Green: Filled, Red: Empty, Blue: Multiple",
-                    use_column_width=True
-                )
-            else:
-                st.warning("No overlay image available for this student")
-        
-        # Question-wise results
-        if 'detailed_results' in selected_result:
-            st.subheader("📝 Question-wise Analysis")
-            
-            detailed_results = selected_result['detailed_results']
-            
-            # Create tabs for each subject
-            subject_tabs = st.tabs(list(SUBJECTS.keys()))
-            
-            for tab_idx, (subject_name, question_range) in enumerate(SUBJECTS.items()):
-                with subject_tabs[tab_idx]:
-                    subject_questions = [r for r in detailed_results if r[0] in question_range]
-                    
-                    if subject_questions:
-                        # Subject statistics
-                        correct_count = sum(1 for q in subject_questions if q[3])
-                        total_questions = len(subject_questions)
-                        subject_percentage = (correct_count / total_questions) * 100
-                        
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Correct Answers", f"{correct_count}/{total_questions}")
-                        with col2:
-                            st.metric("Subject Score", f"{subject_percentage:.1f}%")
-                        with col3:
-                            grade = "A" if subject_percentage >= 90 else "B" if subject_percentage >= 80 else "C" if subject_percentage >= 70 else "D" if subject_percentage >= 60 else "F"
-                            st.metric("Grade", grade)
-                        
-                        # Question details in a more compact format
-                        st.write("**Question Details:**")
-                        
-                        # Group questions into rows of 5 for better display
-                        questions_per_row = 5
-                        for row_start in range(0, len(subject_questions), questions_per_row):
-                            cols = st.columns(questions_per_row)
-                            for col_idx, q_idx in enumerate(range(row_start, min(row_start + questions_per_row, len(subject_questions)))):
-                                if col_idx < len(cols):
-                                    question_num, student_ans, correct_ans, is_correct = subject_questions[q_idx]
-                                    
-                                    student_answer_text = "✖️"  # No answer
-                                    if student_ans == -1:
-                                        student_answer_text = "⚠️"  # Multiple
-                                    elif student_ans >= 0:
-                                        student_answer_text = chr(65 + student_ans)
-                                    
-                                    status_icon = "✅" if is_correct else "❌"
-                                    
-                                    with cols[col_idx]:
-                                        st.write(f"**Q{question_num}**")
-                                        st.write(f"{status_icon} {student_answer_text}/{chr(65 + correct_ans)}")
+                st.image(overlay_rgb, caption="Green: Correct, Red: Empty, Blue: Multiple", use_column_width=True)
     
     # Export functionality
     st.header("💾 Export Results")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
         # CSV Export
         csv_data = df.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="📥 Download CSV",
+            label="📥 Download as CSV",
             data=csv_data,
             file_name=f"omr_results_{version}_{len(st.session_state.results_data)}_students.csv",
             mime="text/csv"
         )
     
     with col2:
-        # Excel Export
-        try:
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
-                df.to_excel(writer, index=False, sheet_name="Summary")
-            
-            st.download_button(
-                label="📊 Download Excel",
-                data=excel_buffer.getvalue(),
-                file_name=f"omr_results_{version}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        except Exception as e:
-            st.error(f"Excel export not available: {str(e)}")
-    
-    with col3:
         # JSON Export
         json_data = {
             "exam_version": version,
@@ -446,32 +307,27 @@ if st.session_state.results_data:
             "average_score": df["Total Score"].mean(),
             "results": df.to_dict("records")
         }
-        
         json_str = json.dumps(json_data, indent=2)
         st.download_button(
-            label="🔧 Download JSON",
+            label="🔧 Download as JSON",
             data=json_str,
             file_name=f"omr_data_{version}.json",
             mime="application/json"
         )
 
-# Reset button
+# Reset functionality
 if st.session_state.results_data:
-    st.header("🔄 Process New Batch")
-    if st.button("🆕 Clear Results and Upload New Images", type="primary"):
+    if st.button("🆕 Process New Images"):
         st.session_state.results_data = []
         st.session_state.processing_complete = False
-        st.rerun()
+        try:
+            st.rerun()
+        except AttributeError:
+            try:
+                st.experimental_rerun()
+            except AttributeError:
+                st.write("Click 'Process New Images' again or refresh the page")
 
 # Footer
 st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align: center; color: #666; padding: 20px;'>
-        <p><strong>🏆 OMR Evaluation System - Hackathon Project</strong></p>
-        <p>Automated processing of 3000+ sheets with 99.5%+ accuracy | Built with Streamlit & OpenCV</p>
-        <p>📸 Upload clear, well-lit images for best results</p>
-    </div>
-    """, 
-    unsafe_allow_html=True
-)
+st.markdown("**🏆 OMR Evaluation System - Hackathon Project** | Built with Streamlit & OpenCV")

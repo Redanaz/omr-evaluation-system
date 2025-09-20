@@ -101,7 +101,14 @@ with st.sidebar:
     
     # Convert answer key
     try:
-        answer_key = {int(k): v for k, v in answer_keys[version].items()}
+        # Handle both string and int keys from your JSON format
+        if version in ["Set-A", "Set-B"]:
+            # Your format uses "1"-"100" as keys
+            answer_key = {int(k)-1: v for k, v in answer_keys[version].items()}
+        else:
+            # Standard format uses "0"-"99" as keys
+            answer_key = {int(k): v for k, v in answer_keys[version].items()}
+        
         if not validate_answer_key(answer_key):
             st.error("❌ Invalid answer key format!")
             st.stop()
@@ -121,12 +128,29 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     st.header("📤 Upload OMR Sheets")
-    uploaded_files = st.file_uploader(
-        "Choose OMR image files",
-        type=["jpg", "jpeg", "png"],
-        accept_multiple_files=True,
-        help="Upload clear images of filled OMR sheets. Supports multiple files for batch processing."
+    
+    # Add mobile camera option
+    upload_method = st.radio(
+        "Choose upload method:",
+        ["📁 Upload from device", "📱 Take photo with camera"],
+        horizontal=True
     )
+    
+    uploaded_files = []
+    
+    if upload_method == "📁 Upload from device":
+        uploaded_files = st.file_uploader(
+            "Choose OMR image files",
+            type=["jpg", "jpeg", "png"],
+            accept_multiple_files=True,
+            help="Upload clear images of filled OMR sheets. Supports multiple files for batch processing."
+        )
+    else:
+        st.markdown("**📱 Mobile Camera Instructions:**")
+        st.info("Use good lighting, hold steady, ensure entire sheet is visible, avoid shadows and glare.")
+        camera_photo = st.camera_input("Take a photo of the OMR sheet")
+        if camera_photo is not None:
+            uploaded_files = [camera_photo]
 
 with col2:
     if uploaded_files:
@@ -186,10 +210,17 @@ if uploaded_files and not st.session_state.processing_complete:
             # Process the image
             start_time = time.time()
             student_id = f"Student_{idx+1:03d}"
-            
+            # Debug: Check if file was saved correctly
+            st.write(f"DEBUG: Temporary file path: {tmp_path}")
+            st.write(f"DEBUG: File exists: {os.path.exists(tmp_path)}")
+            st.write(f"DEBUG: File size on disk: {os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 'N/A'}")
             overlay, results, score, subject_scores, _ = evaluate(
-                tmp_path, answer_key, student_id=student_id
-            )
+                tmp_path, answer_key, student_id=student_id)
+            # Debug: Check what evaluate returned
+            st.write(f"DEBUG: overlay is None: {overlay is None}")
+            st.write(f"DEBUG: results is None: {results is None}")
+            st.write(f"DEBUG: score: {score}")
+            st.write(f"DEBUG: subject_scores: {subject_scores}")
             
             processing_time = time.time() - start_time
             

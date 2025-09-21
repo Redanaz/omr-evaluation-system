@@ -5,7 +5,7 @@ A hackathon project for automated evaluation of OMR (Optical Mark Recognition) s
 ## 🚀 Features
 
 - **Automated OMR Processing**: Upload images and get instant results
-- **Multi-Version Support**: Handles different exam versions (Set A, Set R)
+- **Multi-Version Support**: Handles different exam versions (Set A, Set B)
 - **Subject-wise Scoring**: Automatic breakdown by subjects (Python, Data Analysis, MySQL, Power BI, Advanced Stats)
 - **Error Detection**: Handles multiple answers, blank responses, and invalid marks
 - **Comprehensive Analytics**: Score distributions, performance metrics, and visualizations
